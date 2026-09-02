@@ -1,4 +1,4 @@
-const { stores, json } = require('./_utils');
+const { stores, json, initBlobs } = require('./_utils');
 
 async function recompute() {
   const attemptsStore = stores.attempts();
@@ -30,8 +30,9 @@ async function recompute() {
 
 // This is registered as a Netlify Scheduled Function (see netlify.toml) and
 // also works if you open its URL manually to refresh the ranking on demand.
-exports.handler = async () => {
+exports.handler = async (event) => {
   try {
+    initBlobs(event);
     const count = await recompute();
     return json(200, { ok: true, students_ranked: count });
   } catch (err) {

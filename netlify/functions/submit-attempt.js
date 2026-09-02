@@ -1,6 +1,7 @@
-const { stores, json, requireStudent } = require('./_utils');
+const { stores, json, requireStudent, initBlobs } = require('./_utils');
 
 exports.handler = async (event) => {
+  initBlobs(event);
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
   const student = requireStudent(event);

@@ -5,12 +5,18 @@
   --paper-card: #ffffff;
   --gold: #d79c33;
   --gold-deep: #b5801e;
+  --gold-soft: rgba(215, 156, 51, 0.14);
   --ink: #1c2534;
   --ink-soft: #5b6478;
   --line: #d7dce6;
   --good: #2e7d5b;
+  --good-soft: #e7f3ec;
   --bad: #b3402f;
+  --bad-soft: #fbeae6;
   --radius: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(15, 27, 50, 0.05);
+  --shadow-md: 0 10px 28px -14px rgba(15, 27, 50, 0.35);
   --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
@@ -35,13 +41,14 @@ body {
 a { color: inherit; }
 
 .topbar {
-  background: var(--navy);
+  background: linear-gradient(155deg, var(--navy) 0%, var(--navy-deep) 100%);
   color: #fff;
   padding: 16px 20px;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
+  border-bottom: 2px solid var(--gold);
 }
 
 .topbar .brand {
@@ -88,9 +95,16 @@ main {
 .card {
   background: var(--paper-card);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: 20px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+  animation: rise 0.28s ease both;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 h1, h2, h3 {
@@ -140,13 +154,17 @@ button, .btn {
   font-size: 0.96rem;
   font-weight: 600;
   font-family: var(--sans);
+  transition: transform 0.08s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
+
+button:active { transform: scale(0.98); }
 
 .btn-primary {
   background: var(--navy);
   color: #fff;
   width: 100%;
   margin-top: 18px;
+  box-shadow: var(--shadow-md);
 }
 
 .btn-primary:active { background: var(--navy-deep); }
@@ -155,6 +173,8 @@ button, .btn {
   background: var(--gold);
   color: var(--navy-deep);
 }
+
+.btn-gold:active { background: var(--gold-deep); }
 
 .btn-outline {
   background: transparent;
@@ -274,23 +294,6 @@ button, .btn {
   background: #eef1f8;
 }
 
-.score-hero {
-  text-align: center;
-  padding: 18px 0 6px;
-}
-
-.score-hero .num {
-  font-family: var(--serif);
-  font-size: 3rem;
-  color: var(--navy-deep);
-  font-weight: 600;
-}
-
-.score-hero .out-of {
-  color: var(--ink-soft);
-  font-size: 0.9rem;
-}
-
 .stat-row {
   display: flex;
   justify-content: space-around;
@@ -339,7 +342,7 @@ table.leaderboard tr.me { background: #fbf3e2; }
   font-weight: 700;
 }
 
-.rank-badge.gold { background: var(--gold); color: var(--navy-deep); }
+.rank-badge.gold { background: var(--gold); color: var(--navy-deep); font-size: 0.95rem; }
 
 .empty-state {
   text-align: center;
@@ -414,3 +417,94 @@ footer.app-footer {
 .q-list-item .qt { font-weight: 600; font-size: 0.92rem; }
 .q-list-item .qo { font-size: 0.82rem; color: var(--ink-soft); margin-top: 4px; }
 .q-list-item .qo b { color: var(--good); }
+
+/* ---------- Auth hero ---------- */
+.hero-auth {
+  text-align: center;
+  padding: 10px 4px 22px;
+}
+
+.hero-auth .seal {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  display: block;
+}
+
+.hero-auth h1 {
+  font-size: 1.65rem;
+  line-height: 1.2;
+}
+
+.hero-auth p {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  max-width: 34ch;
+  margin: 6px auto 0;
+}
+
+/* ---------- Quiz progress ---------- */
+.progress-track {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--gold);
+  border-radius: 4px;
+  transition: width 0.25s ease;
+}
+
+/* ---------- Score ring ---------- */
+.score-ring {
+  --pct: 0;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  margin: 6px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(var(--gold) calc(var(--pct) * 1%), var(--line) 0);
+}
+
+.score-ring .inner {
+  width: 106px;
+  height: 106px;
+  border-radius: 50%;
+  background: var(--paper-card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-ring .num {
+  font-family: var(--serif);
+  font-size: 2.1rem;
+  font-weight: 600;
+  color: var(--navy-deep);
+  line-height: 1;
+}
+
+.score-ring .out-of {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  margin-top: 2px;
+}
+
+.tier-msg {
+  text-align: center;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  color: var(--navy-deep);
+  margin-top: 14px;
+}
+
+/* ---------- Leaderboard medals ---------- */
+table.leaderboard tr.me td { font-weight: 600; }
+table.leaderboard tr.me { background: var(--gold-soft); }

@@ -1,6 +1,7 @@
-const { stores, json, requireAdmin, newId } = require('./_utils');
+const { stores, json, requireAdmin, newId, initBlobs } = require('./_utils');
 
 exports.handler = async (event) => {
+  initBlobs(event);
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
   if (!requireAdmin(event)) return json(401, { error: 'Admin login required' });
 

@@ -62,6 +62,15 @@ function render() {
 // ---------- AUTH ----------
 function renderAuth() {
   app.innerHTML = `
+    <div class="hero-auth">
+      <svg class="seal" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="26" cy="26" r="24" stroke="#d79c33" stroke-width="2"/>
+        <circle cx="26" cy="26" r="18" stroke="#d79c33" stroke-width="1"/>
+        <path d="M17 27.5L23 33L36 20" stroke="#182849" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h1>Test yourself. Track your rank.</h1>
+      <p>Short quizzes, honest scoring, and a leaderboard that updates every night.</p>
+    </div>
     <div class="tabs">
       <button id="tabLogin" class="active">Log in</button>
       <button id="tabRegister">Create account</button>
@@ -192,18 +201,29 @@ async function startQuiz(setId) {
   }
 }
 
+function scoreTier(pct) {
+  if (pct >= 85) return 'Excellent work.';
+  if (pct >= 60) return 'Solid effort.';
+  if (pct >= 35) return 'Room to grow — try the next set.';
+  return "Don't worry, every set is a fresh start.";
+}
+
 function renderQuizTaking() {
   const { set, questions, answers, result } = state.activeQuiz;
 
   if (result) {
     const pct = questions.length ? Math.round((result.score / questions.length) * 100) : 0;
+    const ringPct = Math.max(0, Math.min(100, pct));
     app.innerHTML = `
       <div class="card">
         <h2>${esc(set.name)}</h2>
-        <div class="score-hero">
-          <div class="num">${result.score}</div>
-          <div class="out-of">out of ${result.total_questions} (${pct}%)</div>
+        <div class="score-ring" style="--pct:${ringPct}">
+          <div class="inner">
+            <div class="num">${result.score}</div>
+            <div class="out-of">of ${result.total_questions}</div>
+          </div>
         </div>
+        <div class="tier-msg">${scoreTier(pct)}</div>
         <div class="stat-row">
           <div><span style="color:#2e7d5b">${result.correct_count}</span><div class="lbl">Correct</div></div>
           <div><span style="color:#b3402f">${result.wrong_count}</span><div class="lbl">Wrong</div></div>
@@ -221,10 +241,12 @@ function renderQuizTaking() {
   }
 
   const answeredCount = Object.keys(answers).length;
+  const pct = questions.length ? Math.round((answeredCount / questions.length) * 100) : 0;
   app.innerHTML = `
     <div class="card">
       <h2>${esc(set.name)}</h2>
       <p class="lede">${answeredCount} of ${questions.length} answered · Correct = +1, Wrong = -0.25</p>
+      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
     </div>
     <div class="card">
       ${questions.map((q, i) => `
@@ -281,6 +303,7 @@ async function loadLeaderboard() {
   try {
     const data = await api('leaderboard');
     const rows = data.top10;
+    const medals = { 1: '🥇', 2: '🥈', 3: '🥉' };
     body.innerHTML = `
       <div class="card">
         <h2>Top scorers</h2>
@@ -290,8 +313,8 @@ async function loadLeaderboard() {
           <thead><tr><th>Rank</th><th>Name</th><th style="text-align:right">Score</th></tr></thead>
           <tbody>
             ${rows.map((r) => `
-              <tr>
-                <td><span class="rank-badge ${r.rank <= 3 ? 'gold' : ''}">${r.rank}</span></td>
+              <tr class="${data.my_rank && r.rank === data.my_rank.rank ? 'me' : ''}">
+                <td><span class="rank-badge ${r.rank <= 3 ? 'gold' : ''}">${medals[r.rank] || r.rank}</span></td>
                 <td>${esc(r.name)}</td>
                 <td style="text-align:right">${r.total_score}</td>
               </tr>

@@ -1,7 +1,8 @@
 const bcrypt = require('bcryptjs');
-const { stores, json, studentToken, newId } = require('./_utils');
+const { stores, json, studentToken, newId, initBlobs } = require('./_utils');
 
 exports.handler = async (event) => {
+  initBlobs(event);
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
   try {

@@ -1,5 +1,12 @@
-const { getStore } = require('@netlify/blobs');
+const { getStore, connectLambda } = require('@netlify/blobs');
 const jwt = require('jsonwebtoken');
+
+// Netlify Functions written in this "Lambda compatibility" style (exports.handler)
+// don't get Netlify Blobs wired up automatically - it must be connected manually
+// using the incoming event, once per invocation, before any store is touched.
+function initBlobs(event) {
+  connectLambda(event);
+}
 
 // A separate "drawer" for each kind of data. Netlify Blobs needs no setup —
 // it's automatically available the moment this site is deployed on Netlify.
@@ -71,4 +78,5 @@ module.exports = {
   requireStudent,
   requireAdmin,
   newId,
+  initBlobs,
 };
