@@ -17,8 +17,12 @@ exports.handler = async (event) => {
     const ok = await bcrypt.compare(password, student.password_hash);
     if (!ok) return json(401, { error: 'Incorrect password' });
 
+    if (student.blocked) {
+      return json(403, { error: 'Your account has been blocked. Please contact the admin.' });
+    }
+
     const token = studentToken(student);
-    return json(200, { token, name: student.name, phone: student.phone });
+    return json(200, { token, name: student.name, phone: student.phone, track: student.track || null });
   } catch (err) {
     console.error(err);
     return json(500, { error: 'Something went wrong. Please try again.' });

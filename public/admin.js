@@ -33,11 +33,15 @@ function esc(str) {
 }
 
 function render() {
-  topbarActions.innerHTML = state.token ? `<button id="logoutBtn">Log out</button>` : '';
+  topbarActions.innerHTML = state.token
+    ? `<button id="homeBtn" class="btn-outline btn-sm">Home</button><button id="logoutBtn">Log out</button>`
+    : '';
   if (!state.token) return renderLogin();
   renderHome();
   const lb = document.getElementById('logoutBtn');
   if (lb) lb.onclick = logout;
+  const hb = document.getElementById('homeBtn');
+  if (hb) hb.onclick = () => { state.tab = 'sets'; renderHome(); };
 }
 
 function renderLogin() {
@@ -71,9 +75,9 @@ function renderLogin() {
 function renderHome() {
   app.innerHTML = `
     <div class="tabs">
-      <button data-tab="sets" class="${state.tab === 'sets' ? 'active' : ''}">Question Sets</button>
-      <button data-tab="create" class="${state.tab === 'create' ? 'active' : ''}">+ New Set</button>
-      <button data-tab="students" class="${state.tab === 'students' ? 'active' : ''}">Students</button>
+      <button data-tab="sets" class="${state.tab === 'sets' ? 'active' : ''}">📋 Question Sets</button>
+      <button data-tab="create" class="${state.tab === 'create' ? 'active' : ''}">➕ New Set</button>
+      <button data-tab="students" class="${state.tab === 'students' ? 'active' : ''}">👥 Students</button>
     </div>
     <div id="tabBody"><div class="loading">Loading…</div></div>
   `;
@@ -88,19 +92,36 @@ function renderHome() {
 async function loadSets() {
   const body = document.getElementById('tabBody');
   try {
-    const { sets } = await api('list-sets');
+    const [{ sets }, { students }, { tracks }] = await Promise.all([
+      api('list-sets'),
+      api('admin-students'),
+      api('list-tracks'),
+    ]);
+    const groups = {};
+    sets.forEach((s) => {
+      const cat = s.category || 'General';
+      (groups[cat] = groups[cat] || []).push(s);
+    });
+    const catNames = Object.keys(groups).sort((a, b) => (a === 'General' ? 1 : b === 'General' ? -1 : a.localeCompare(b)));
+
     body.innerHTML = `
       <div class="card">
-        <button class="btn-outline btn-block" id="recomputeBtn">Recompute ranking now</button>
+        <div class="stat-row">
+          <div><span>${sets.length}</span><div class="lbl">Question sets</div></div>
+          <div><span>${students.length}</span><div class="lbl">Students</div></div>
+          <div><span>${tracks.length}</span><div class="lbl">Tracks</div></div>
+        </div>
+        <button class="btn-outline btn-block" id="recomputeBtn" style="margin-top:14px;">Recompute ranking now</button>
         <div id="recomputeMsg"></div>
       </div>
+      ${sets.length === 0 ? `<div class="card"><div class="empty-state">No sets yet. Create one from the "+ New Set" tab.</div></div>` : catNames.map((cat) => `
       <div class="card">
-        <h2>All sets</h2>
-        ${sets.length === 0 ? `<div class="empty-state">No sets yet. Create one from the "+ New Set" tab.</div>` : sets.map((s) => `
+        <h2>${esc(cat)}</h2>
+        ${groups[cat].map((s) => `
           <div class="set-row">
             <div>
               <div class="set-name">${esc(s.name)}</div>
-              <div class="set-meta">${s.question_count} questions · ${new Date(s.created_at).toLocaleDateString()}</div>
+              <div class="set-meta">${s.question_count} questions · ${new Date(s.created_at).toLocaleDateString()}${s.time_limit_minutes ? ` · ${s.time_limit_minutes} min timer` : ' · no timer'}</div>
             </div>
             <div style="display:flex; gap:6px;">
               <button class="btn-outline btn-sm" data-view="${s.id}">View</button>
@@ -109,13 +130,14 @@ async function loadSets() {
           </div>
         `).join('')}
       </div>
+      `).join('')}
     `;
     document.getElementById('recomputeBtn').onclick = async () => {
       const m = document.getElementById('recomputeMsg');
       m.innerHTML = '<p class="lede">Recomputing…</p>';
       try {
         const r = await api('recompute-ranking');
-        m.innerHTML = `<div class="ok-msg">Done — ${r.students_ranked} student(s) ranked.</div>`;
+        m.innerHTML = `<div class="ok-msg">Done — ${r.students_ranked} student ranking(s) updated across ${r.tracks_ranked} track(s).</div>`;
       } catch (e) {
         m.innerHTML = `<div class="error-msg">${esc(e.error || 'Failed')}</div>`;
       }
@@ -146,7 +168,32 @@ async function viewSet(setId) {
       <div class="card">
         <button class="link-btn" id="backBtn">&larr; Back to all sets</button>
         <h2 style="margin-top:10px;">${esc(set.name)}</h2>
-        <p class="lede">${questions.length} questions</p>
+        <p class="lede">${esc(set.category || 'General')} · ${questions.length} questions${set.time_limit_minutes ? ` · ${set.time_limit_minutes} min timer` : ' · no timer'}</p>
+      </div>
+      <div class="card">
+        <h3>Edit set details</h3>
+        <label>Set name</label>
+        <input id="editName" type="text" value="${esc(set.name)}" />
+        <label>Category / subject</label>
+        <input id="editCategory" type="text" value="${esc(set.category || 'General')}" />
+        <label>Time limit in minutes</label>
+        <input id="editTimeLimit" type="number" min="1" value="${set.time_limit_minutes || ''}" placeholder="Leave blank for no timer" />
+        <button class="btn-gold btn-block" id="saveSetEditBtn" style="margin-top:12px;">Save changes</button>
+        <div id="editMsg"></div>
+      </div>
+      <div class="card">
+        <h3>Add more questions to this set</h3>
+        <pre class="bulk-format">Q: question text
+A: option A
+B: option B
+C: option C
+D: option D
+Correct: B</pre>
+        <textarea id="bulkText" rows="6" placeholder="Paste your questions here..."></textarea>
+        <button class="btn-outline btn-block" id="bulkAddBtn" style="margin-top:10px;">Add pasted questions to this set</button>
+        <div id="bulkMsg"></div>
+      </div>
+      <div class="card">
         ${questions.map((q, i) => `
           <div class="q-list-item">
             <div class="qt">${i + 1}. ${esc(q.question_text)}</div>
@@ -160,6 +207,34 @@ async function viewSet(setId) {
       </div>
     `;
     document.getElementById('backBtn').onclick = loadSets;
+    document.getElementById('saveSetEditBtn').onclick = async () => {
+      const name = document.getElementById('editName').value.trim();
+      const category = document.getElementById('editCategory').value.trim();
+      const time_limit_minutes = document.getElementById('editTimeLimit').value.trim();
+      const msg = document.getElementById('editMsg');
+      if (!name) { msg.innerHTML = `<div class="error-msg">Set name cannot be empty</div>`; return; }
+      try {
+        await api('admin-update-set', { method: 'POST', body: { setId, name, category, time_limit_minutes: time_limit_minutes || null } });
+        viewSet(setId);
+      } catch (e) {
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not save changes')}</div>`;
+      }
+    };
+    document.getElementById('bulkAddBtn').onclick = async () => {
+      const text = document.getElementById('bulkText').value;
+      const msg = document.getElementById('bulkMsg');
+      const { questions: parsed, errors } = parseBulkQuestions(text);
+      if (parsed.length === 0) {
+        msg.innerHTML = `<div class="error-msg">No valid questions found. Check the format and try again.</div>`;
+        return;
+      }
+      try {
+        await api('add-questions', { method: 'POST', body: { setId, questions: parsed } });
+        viewSet(setId);
+      } catch (e) {
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not add questions')}</div>`;
+      }
+    };
     body.querySelectorAll('[data-delq]').forEach((b) => {
       b.onclick = async () => {
         if (!confirm('Delete this question?')) return;
@@ -186,6 +261,23 @@ function renderCreateSet() {
       <h2>New question set</h2>
       <label>Set name</label>
       <input id="setName" type="text" placeholder="e.g. Set 3 - General Knowledge" />
+      <label>Category / subject (optional)</label>
+      <input id="setCategory" type="text" placeholder="e.g. Mathematics — leave blank for General" />
+      <label>Time limit in minutes (optional)</label>
+      <input id="setTimeLimit" type="number" min="1" placeholder="Leave blank for no timer" />
+    </div>
+    <div class="card">
+      <h3>Paste questions in bulk (optional)</h3>
+      <p class="lede">One block per question, separated by a blank line. Format:</p>
+      <pre class="bulk-format">Q: question text
+A: option A
+B: option B
+C: option C
+D: option D
+Correct: B</pre>
+      <textarea id="bulkText" rows="6" placeholder="Paste your questions here..."></textarea>
+      <button class="btn-outline btn-block" id="bulkParseBtn" style="margin-top:10px;">Add pasted questions</button>
+      <div id="bulkMsg"></div>
     </div>
     <div class="card">
       <h3>Questions (${draftQuestions.length} added)</h3>
@@ -210,6 +302,21 @@ function renderCreateSet() {
       <div id="saveMsg"></div>
     </div>
   `;
+
+  document.getElementById('bulkParseBtn').onclick = () => {
+    const text = document.getElementById('bulkText').value;
+    const msg = document.getElementById('bulkMsg');
+    const { questions, errors } = parseBulkQuestions(text);
+    if (questions.length === 0) {
+      msg.innerHTML = `<div class="error-msg">No valid questions found. Check the format and try again.</div>`;
+      return;
+    }
+    draftQuestions = draftQuestions.concat(questions);
+    let m = `<div class="ok-msg">Added ${questions.length} question(s).</div>`;
+    if (errors.length) m += `<div class="error-msg">${errors.length} block(s) skipped: ${errors.join(' · ')}</div>`;
+    renderCreateSet();
+    document.getElementById('bulkMsg').innerHTML = m;
+  };
 
   let correctChoice = null;
   document.querySelectorAll('.correct-toggle button').forEach((b) => {
@@ -241,11 +348,13 @@ function renderCreateSet() {
 
   document.getElementById('saveSetBtn').onclick = async () => {
     const name = document.getElementById('setName').value.trim();
+    const category = document.getElementById('setCategory').value.trim();
+    const time_limit_minutes = document.getElementById('setTimeLimit').value.trim();
     const msg = document.getElementById('saveMsg');
     if (!name) { msg.innerHTML = `<div class="error-msg">Give the set a name</div>`; return; }
     if (draftQuestions.length === 0) { msg.innerHTML = `<div class="error-msg">Add at least one question</div>`; return; }
     try {
-      await api('create-set', { method: 'POST', body: { name, questions: draftQuestions } });
+      await api('create-set', { method: 'POST', body: { name, questions: draftQuestions, category, time_limit_minutes } });
       draftQuestions = [];
       state.tab = 'sets';
       render();
@@ -253,6 +362,42 @@ function renderCreateSet() {
       msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not save set')}</div>`;
     }
   };
+}
+
+// Parses pasted bulk-question text into structured questions.
+// Format per block (separated by a blank line):
+//   Q: question text
+//   A: option a
+//   B: option b
+//   C: option c
+//   D: option d
+//   Correct: B   (or "Ans: B")
+function parseBulkQuestions(text) {
+  const blocks = (text || '').split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  const questions = [];
+  const errors = [];
+  blocks.forEach((block, idx) => {
+    const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+    const q = { question_text: '', option_a: '', option_b: '', option_c: '', option_d: '', correct_option: '' };
+    lines.forEach((line) => {
+      const m = line.match(/^(Q|A|B|C|D|Correct|Ans)\s*[:.\-]\s*(.+)$/i);
+      if (!m) return;
+      const key = m[1].toUpperCase();
+      const val = m[2].trim();
+      if (key === 'Q') q.question_text = val;
+      else if (key === 'A') q.option_a = val;
+      else if (key === 'B') q.option_b = val;
+      else if (key === 'C') q.option_c = val;
+      else if (key === 'D') q.option_d = val;
+      else if (key === 'CORRECT' || key === 'ANS') q.correct_option = val.toUpperCase().replace(/[^ABCD]/g, '').charAt(0);
+    });
+    if (!q.question_text || !q.option_a || !q.option_b || !q.option_c || !q.option_d || !['A', 'B', 'C', 'D'].includes(q.correct_option)) {
+      errors.push(`block ${idx + 1}`);
+    } else {
+      questions.push(q);
+    }
+  });
+  return { questions, errors };
 }
 
 function drawDraftList() {
@@ -281,18 +426,124 @@ async function loadStudents() {
       <div class="card">
         <h2>All students (${students.length})</h2>
         ${students.length === 0 ? `<div class="empty-state">No students registered yet.</div>` : students.map((s) => `
-          <div class="set-row">
+          <div class="set-row" data-student="${s.id}" data-name="${esc(s.name)}" style="cursor:pointer;">
             <div>
-              <div class="set-name">${esc(s.name)}</div>
-              <div class="set-meta">${esc(s.phone)} · joined ${new Date(s.created_at).toLocaleDateString()} · ${s.quizzes_taken} quiz(zes) taken</div>
+              <div class="set-name">${esc(s.name)} ${s.blocked ? '<span class="pill blocked">Blocked</span>' : ''}</div>
+              <div class="set-meta">${esc(s.phone)} · ${esc(s.track || 'No track set')} · joined ${new Date(s.created_at).toLocaleDateString()} · ${s.quizzes_taken} quiz(zes) taken</div>
             </div>
             <span class="pill done">${s.total_score}</span>
           </div>
         `).join('')}
       </div>
     `;
+    body.querySelectorAll('[data-student]').forEach((row) => {
+      row.onclick = () => viewStudentHistory(row.dataset.student, row.dataset.name);
+    });
   } catch (e) {
     body.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not load students')}</div>`;
+  }
+}
+
+async function viewStudentHistory(studentId, name) {
+  const body = document.getElementById('tabBody');
+  body.innerHTML = `<div class="loading">Loading…</div>`;
+  try {
+    const [{ attempts }, { students }, { tracks }] = await Promise.all([
+      api(`admin-student-attempts?studentId=${encodeURIComponent(studentId)}`),
+      api('admin-students'),
+      api('list-tracks'),
+    ]);
+    const student = students.find((s) => s.id === studentId);
+    const total = Math.round(attempts.reduce((sum, a) => sum + a.score, 0) * 100) / 100;
+    body.innerHTML = `
+      <div class="card">
+        <button class="link-btn" id="backBtn">&larr; Back to all students</button>
+        <h2 style="margin-top:10px;">${esc(student?.name || name)} ${student?.blocked ? '<span class="pill blocked">Blocked</span>' : ''}</h2>
+        <div class="stat-row">
+          <div><span>${attempts.length}</span><div class="lbl">Quizzes taken</div></div>
+          <div><span>${total}</span><div class="lbl">Total score</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Account details</h3>
+        <label>Name</label>
+        <input id="editStudentName" type="text" value="${esc(student?.name || '')}" />
+        <button class="btn-outline btn-block" id="saveNameBtn" style="margin-top:10px;">Save name</button>
+        <div id="nameMsg"></div>
+
+        <label style="margin-top:18px;">Track</label>
+        <select id="trackEdit">${tracks.map((t) => `<option value="${esc(t)}" ${student?.track === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+        <button class="btn-outline btn-block" id="saveTrackBtn" style="margin-top:10px;">Save track</button>
+        <div id="trackMsg"></div>
+
+        <div style="display:flex; gap:8px; margin-top:18px;">
+          <button class="btn-outline" style="flex:1;" id="blockBtn">${student?.blocked ? 'Unblock student' : 'Block student'}</button>
+          <button class="btn-danger" style="flex:1;" id="deleteBtn">Delete student</button>
+        </div>
+        <div id="accountMsg"></div>
+      </div>
+      <div class="card">
+        <h3>Quiz history</h3>
+        ${attempts.length === 0 ? `<div class="empty-state">No quizzes taken yet.</div>` : attempts.map((a) => `
+          <div class="set-row">
+            <div>
+              <div class="set-name">${esc(a.set_name)}</div>
+              <div class="set-meta">${new Date(a.created_at).toLocaleDateString()} · ${a.correct_count} correct, ${a.wrong_count} wrong, ${a.unattempted} skipped</div>
+            </div>
+            <span class="pill done">${a.score}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    document.getElementById('backBtn').onclick = loadStudents;
+
+    document.getElementById('saveNameBtn').onclick = async () => {
+      const newName = document.getElementById('editStudentName').value.trim();
+      const msg = document.getElementById('nameMsg');
+      if (!newName) { msg.innerHTML = `<div class="error-msg">Name cannot be empty</div>`; return; }
+      try {
+        await api('admin-update-student', { method: 'POST', body: { phone: student.phone, name: newName } });
+        viewStudentHistory(studentId, newName);
+      } catch (e) {
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not update name')}</div>`;
+      }
+    };
+
+    document.getElementById('saveTrackBtn').onclick = async () => {
+      const track = document.getElementById('trackEdit').value;
+      const msg = document.getElementById('trackMsg');
+      try {
+        await api('admin-set-student-track', { method: 'POST', body: { phone: student.phone, track } });
+        viewStudentHistory(studentId, name);
+      } catch (e) {
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not update track')}</div>`;
+      }
+    };
+
+    document.getElementById('blockBtn').onclick = async () => {
+      const msg = document.getElementById('accountMsg');
+      const nextBlocked = !student?.blocked;
+      if (nextBlocked && !confirm(`Block ${student.name}? They will not be able to log in until unblocked.`)) return;
+      try {
+        await api('admin-update-student', { method: 'POST', body: { phone: student.phone, blocked: nextBlocked } });
+        viewStudentHistory(studentId, name);
+      } catch (e) {
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not update account')}</div>`;
+      }
+    };
+
+    document.getElementById('deleteBtn').onclick = async () => {
+      const msg = document.getElementById('accountMsg');
+      if (!confirm(`Permanently delete ${student.name}? This removes their account and all their quiz attempts. This cannot be undone.`)) return;
+      try {
+        await api('admin-delete-student', { method: 'POST', body: { phone: student.phone } });
+        loadStudents();
+      } catch (e) {
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not delete student')}</div>`;
+      }
+    };
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not load history')}</div>`;
   }
 }
 

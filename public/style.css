@@ -130,7 +130,7 @@ label {
   margin: 14px 0 6px;
 }
 
-input, select {
+input, select, textarea {
   width: 100%;
   padding: 11px 12px;
   border: 1px solid var(--line);
@@ -141,7 +141,9 @@ input, select {
   font-family: var(--sans);
 }
 
-input:focus, select:focus, button:focus {
+textarea { resize: vertical; margin-top: 8px; }
+
+input:focus, select:focus, textarea:focus, button:focus {
   outline: 2px solid var(--gold);
   outline-offset: 1px;
 }
@@ -257,6 +259,7 @@ button:active { transform: scale(0.98); }
 }
 
 .pill.done { background: #e7f3ec; color: var(--good); border-color: #bfe0cf; }
+.pill.blocked { background: var(--bad-soft); color: var(--bad); border-color: #f0c6bd; margin-left: 6px; }
 
 .question-block {
   margin-bottom: 22px;
@@ -508,3 +511,46 @@ footer.app-footer {
 /* ---------- Leaderboard medals ---------- */
 table.leaderboard tr.me td { font-weight: 600; }
 table.leaderboard tr.me { background: var(--gold-soft); }
+
+/* ---------- Timer ---------- */
+.timer-badge {
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--navy-deep);
+  background: var(--gold-soft);
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.timer-badge.low { color: var(--bad); background: var(--bad-soft); border-color: var(--bad); }
+
+/* ---------- Bulk add ---------- */
+.bulk-format {
+  background: var(--paper);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  font-family: 'Courier New', monospace;
+  margin: 6px 0 0;
+}
+
+/* ---------- Answer review ---------- */
+.review-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.review-item:last-child { border-bottom: none; }
+.review-opt {
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 0.86rem;
+  margin-top: 4px;
+  color: var(--ink-soft);
+}
+.review-opt.correct { background: var(--good-soft); color: var(--good); font-weight: 600; }
+.review-opt.wrong-given { background: var(--bad-soft); color: var(--bad); font-weight: 600; }

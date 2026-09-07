@@ -70,6 +70,13 @@ function newId() {
   );
 }
 
+// The JWT only carries identity - track can be changed by the admin later,
+// so anything that needs to check track must re-read the live student record.
+async function getStudentRecord(payload) {
+  if (!payload) return null;
+  return stores.students().get(payload.phone, { type: 'json' });
+}
+
 module.exports = {
   stores,
   json,
@@ -79,4 +86,5 @@ module.exports = {
   requireAdmin,
   newId,
   initBlobs,
+  getStudentRecord,
 };

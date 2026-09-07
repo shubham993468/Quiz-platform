@@ -23,6 +23,8 @@ exports.handler = async (event) => {
           id: s.id,
           name: s.name,
           phone: s.phone,
+          track: s.track || null,
+          blocked: !!s.blocked,
           created_at: s.created_at,
           quizzes_taken: theirAttempts.length,
           total_score: Math.round(total_score * 100) / 100,

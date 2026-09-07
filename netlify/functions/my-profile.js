@@ -1,4 +1,4 @@
-const { stores, json, requireStudent, initBlobs } = require('./_utils');
+const { stores, json, requireStudent, getStudentRecord, initBlobs } = require('./_utils');
 
 exports.handler = async (event) => {
   initBlobs(event);
@@ -8,6 +8,7 @@ exports.handler = async (event) => {
   if (!student) return json(401, { error: 'Please log in' });
 
   try {
+    const record = await getStudentRecord(student);
     const attemptsStore = stores.attempts();
     const { blobs } = await attemptsStore.list({ prefix: `${student.id}__` });
 
@@ -19,7 +20,7 @@ exports.handler = async (event) => {
     const total_score = attempts.reduce((sum, a) => sum + a.score, 0);
 
     return json(200, {
-      profile: { name: student.name, phone: student.phone },
+      profile: { name: student.name, phone: student.phone, track: record?.track || null },
       attempts,
       total_score: Math.round(total_score * 100) / 100,
     });
