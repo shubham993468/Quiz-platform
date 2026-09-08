@@ -20,12 +20,12 @@ async function recompute() {
     if (s) nameById[s.id] = s.name;
   }));
 
+  const attempts = (await Promise.all(blobs.map(({ key }) => attemptsStore.get(key, { type: 'json' })))).filter(Boolean);
+
   const byTrack = {}; // category -> { student_id -> { name, total_score } }
   const overall = {}; // student_id -> { name, total_score } - every attempt, any track
 
-  for (const { key } of blobs) {
-    const attempt = await attemptsStore.get(key, { type: 'json' });
-    if (!attempt) continue;
+  for (const attempt of attempts) {
     const category = attempt.category || 'General'; // older attempts, taken before tracks existed
     const currentName = nameById[attempt.student_id] || attempt.student_name;
 

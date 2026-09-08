@@ -109,7 +109,7 @@ async function loadSets() {
         <div class="stat-row">
           <div><span>${sets.length}</span><div class="lbl">Question sets</div></div>
           <div><span>${students.length}</span><div class="lbl">Students</div></div>
-          <div><span>${tracks.length}</span><div class="lbl">Tracks</div></div>
+          <div><span>${tracks.length}</span><div class="lbl">Courses</div></div>
         </div>
         <button class="btn-outline btn-block" id="recomputeBtn" style="margin-top:14px;">Recompute ranking now</button>
         <div id="recomputeMsg"></div>
@@ -137,7 +137,7 @@ async function loadSets() {
       m.innerHTML = '<p class="lede">Recomputing…</p>';
       try {
         const r = await api('recompute-ranking');
-        m.innerHTML = `<div class="ok-msg">Done — ${r.students_ranked} student ranking(s) updated across ${r.tracks_ranked} track(s).</div>`;
+        m.innerHTML = `<div class="ok-msg">Done — ${r.students_ranked} student ranking(s) updated across ${r.tracks_ranked} course(s).</div>`;
       } catch (e) {
         m.innerHTML = `<div class="error-msg">${esc(e.error || 'Failed')}</div>`;
       }
@@ -163,19 +163,31 @@ async function viewSet(setId) {
   const body = document.getElementById('tabBody');
   body.innerHTML = `<div class="loading">Loading…</div>`;
   try {
-    const { set, questions } = await api(`admin-get-set?setId=${encodeURIComponent(setId)}`);
+    const [{ set, questions }, { tracks }] = await Promise.all([
+      api(`admin-get-set?setId=${encodeURIComponent(setId)}`),
+      api('list-tracks'),
+    ]);
+    const currentCategory = set.category || 'General';
+    // The set's current category might not be in the tracks list in some edge
+    // case (e.g. it was the only set in that category and got deleted then
+    // recreated) - make sure it's always selectable so we don't silently change it.
+    const categoryOptions = tracks.includes(currentCategory) ? tracks : [currentCategory, ...tracks];
     body.innerHTML = `
       <div class="card">
         <button class="link-btn" id="backBtn">&larr; Back to all sets</button>
         <h2 style="margin-top:10px;">${esc(set.name)}</h2>
-        <p class="lede">${esc(set.category || 'General')} · ${questions.length} questions${set.time_limit_minutes ? ` · ${set.time_limit_minutes} min timer` : ' · no timer'}</p>
+        <p class="lede">${esc(currentCategory)} · ${questions.length} questions${set.time_limit_minutes ? ` · ${set.time_limit_minutes} min timer` : ' · no timer'}</p>
       </div>
       <div class="card">
         <h3>Edit set details</h3>
         <label>Set name</label>
         <input id="editName" type="text" value="${esc(set.name)}" />
         <label>Category / subject</label>
-        <input id="editCategory" type="text" value="${esc(set.category || 'General')}" />
+        <select id="editCategory">
+          ${categoryOptions.map((t) => `<option value="${esc(t)}" ${t === currentCategory ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+          <option value="__new__">+ Add a new course…</option>
+        </select>
+        <input id="editCategoryNew" type="text" placeholder="Type the new course name" style="display:none; margin-top:8px;" />
         <label>Time limit in minutes</label>
         <input id="editTimeLimit" type="number" min="1" value="${set.time_limit_minutes || ''}" placeholder="Leave blank for no timer" />
         <button class="btn-gold btn-block" id="saveSetEditBtn" style="margin-top:12px;">Save changes</button>
@@ -193,26 +205,124 @@ Correct: B</pre>
         <button class="btn-outline btn-block" id="bulkAddBtn" style="margin-top:10px;">Add pasted questions to this set</button>
         <div id="bulkMsg"></div>
       </div>
-      <div class="card">
-        ${questions.map((q, i) => `
+      <div class="card" id="questionsCard"></div>
+    `;
+
+    let editingQid = null;
+
+    function paintQuestions() {
+      const card = document.getElementById('questionsCard');
+      card.innerHTML = questions.map((q, i) => {
+        if (q.id === editingQid) {
+          return `
+            <div class="q-list-item">
+              <label>Question text</label>
+              <input id="eqText" type="text" value="${esc(q.question_text)}" />
+              <div class="opt-grid">
+                <div><label>Option A</label><input id="eqA" type="text" value="${esc(q.option_a)}" /></div>
+                <div><label>Option B</label><input id="eqB" type="text" value="${esc(q.option_b)}" /></div>
+                <div><label>Option C</label><input id="eqC" type="text" value="${esc(q.option_c)}" /></div>
+                <div><label>Option D</label><input id="eqD" type="text" value="${esc(q.option_d)}" /></div>
+              </div>
+              <label>Correct answer</label>
+              <div class="correct-toggle" id="eqCorrectToggle">
+                ${['A', 'B', 'C', 'D'].map((c) => `<button data-c="${c}" class="${q.correct_option === c ? 'active' : ''}">${c}</button>`).join('')}
+              </div>
+              <div style="display:flex; gap:8px; margin-top:12px;">
+                <button class="btn-gold" style="flex:1;" id="saveQBtn">Save question</button>
+                <button class="btn-outline" style="flex:1;" id="cancelQBtn">Cancel</button>
+              </div>
+              <div id="eqMsg"></div>
+            </div>
+          `;
+        }
+        return `
           <div class="q-list-item">
             <div class="qt">${i + 1}. ${esc(q.question_text)}</div>
             <div class="qo">A. ${esc(q.option_a)} ${q.correct_option === 'A' ? '<b>&larr; correct</b>' : ''}</div>
             <div class="qo">B. ${esc(q.option_b)} ${q.correct_option === 'B' ? '<b>&larr; correct</b>' : ''}</div>
             <div class="qo">C. ${esc(q.option_c)} ${q.correct_option === 'C' ? '<b>&larr; correct</b>' : ''}</div>
             <div class="qo">D. ${esc(q.option_d)} ${q.correct_option === 'D' ? '<b>&larr; correct</b>' : ''}</div>
-            <button class="btn-danger btn-sm" style="margin-top:8px;" data-delq="${q.id}">Delete this question</button>
+            <div style="display:flex; gap:6px; margin-top:8px;">
+              <button class="btn-outline btn-sm" data-editq="${q.id}">Edit</button>
+              <button class="btn-danger btn-sm" data-delq="${q.id}">Delete</button>
+            </div>
           </div>
-        `).join('')}
-      </div>
-    `;
+        `;
+      }).join('');
+
+      card.querySelectorAll('[data-editq]').forEach((b) => {
+        b.onclick = () => { editingQid = b.dataset.editq; paintQuestions(); };
+      });
+
+      card.querySelectorAll('[data-delq]').forEach((b) => {
+        b.onclick = async () => {
+          if (!confirm('Delete this question?')) return;
+          try {
+            await api('delete-question', { method: 'POST', body: { setId, questionId: b.dataset.delq } });
+            viewSet(setId);
+          } catch (e) {
+            alert(e.error || 'Could not delete');
+          }
+        };
+      });
+
+      const cancelBtn = document.getElementById('cancelQBtn');
+      if (cancelBtn) cancelBtn.onclick = () => { editingQid = null; paintQuestions(); };
+
+      const toggle = document.getElementById('eqCorrectToggle');
+      let selectedCorrect = questions.find((q) => q.id === editingQid)?.correct_option;
+      if (toggle) {
+        toggle.querySelectorAll('button').forEach((b) => {
+          b.onclick = () => {
+            selectedCorrect = b.dataset.c;
+            toggle.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+          };
+        });
+      }
+
+      const saveBtn = document.getElementById('saveQBtn');
+      if (saveBtn) {
+        saveBtn.onclick = async () => {
+          const msg = document.getElementById('eqMsg');
+          const body = {
+            setId,
+            questionId: editingQid,
+            question_text: document.getElementById('eqText').value.trim(),
+            option_a: document.getElementById('eqA').value.trim(),
+            option_b: document.getElementById('eqB').value.trim(),
+            option_c: document.getElementById('eqC').value.trim(),
+            option_d: document.getElementById('eqD').value.trim(),
+            correct_option: selectedCorrect,
+          };
+          if (!body.question_text || !body.option_a || !body.option_b || !body.option_c || !body.option_d) {
+            msg.innerHTML = `<div class="error-msg">All fields are required</div>`;
+            return;
+          }
+          try {
+            await api('admin-update-question', { method: 'POST', body });
+            editingQid = null;
+            viewSet(setId);
+          } catch (e) {
+            msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not save question')}</div>`;
+          }
+        };
+      }
+    }
+
+    paintQuestions();
     document.getElementById('backBtn').onclick = loadSets;
+    document.getElementById('editCategory').onchange = (e) => {
+      document.getElementById('editCategoryNew').style.display = e.target.value === '__new__' ? 'block' : 'none';
+    };
     document.getElementById('saveSetEditBtn').onclick = async () => {
       const name = document.getElementById('editName').value.trim();
-      const category = document.getElementById('editCategory').value.trim();
+      const categorySelect = document.getElementById('editCategory').value;
+      const category = categorySelect === '__new__' ? document.getElementById('editCategoryNew').value.trim() : categorySelect;
       const time_limit_minutes = document.getElementById('editTimeLimit').value.trim();
       const msg = document.getElementById('editMsg');
       if (!name) { msg.innerHTML = `<div class="error-msg">Set name cannot be empty</div>`; return; }
+      if (categorySelect === '__new__' && !category) { msg.innerHTML = `<div class="error-msg">Type the new course's name</div>`; return; }
       try {
         await api('admin-update-set', { method: 'POST', body: { setId, name, category, time_limit_minutes: time_limit_minutes || null } });
         viewSet(setId);
@@ -235,17 +345,6 @@ Correct: B</pre>
         msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not add questions')}</div>`;
       }
     };
-    body.querySelectorAll('[data-delq]').forEach((b) => {
-      b.onclick = async () => {
-        if (!confirm('Delete this question?')) return;
-        try {
-          await api('delete-question', { method: 'POST', body: { setId, questionId: b.dataset.delq } });
-          viewSet(setId);
-        } catch (e) {
-          alert(e.error || 'Could not delete');
-        }
-      };
-    });
   } catch (e) {
     body.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not load set')}</div>`;
   }
@@ -254,15 +353,24 @@ Correct: B</pre>
 // ---------- CREATE SET ----------
 let draftQuestions = [];
 
-function renderCreateSet() {
+async function renderCreateSet() {
   const body = document.getElementById('tabBody');
+  body.innerHTML = `<div class="card"><div class="loading">Loading…</div></div>`;
+  let tracks = [];
+  try { tracks = (await api('list-tracks')).tracks; } catch (e) { tracks = ['General']; }
+
   body.innerHTML = `
     <div class="card">
       <h2>New question set</h2>
       <label>Set name</label>
       <input id="setName" type="text" placeholder="e.g. Set 3 - General Knowledge" />
-      <label>Category / subject (optional)</label>
-      <input id="setCategory" type="text" placeholder="e.g. Mathematics — leave blank for General" />
+      <label>Category / subject</label>
+      <select id="setCategory">
+        ${tracks.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+        <option value="__new__">+ Add a new course…</option>
+      </select>
+      <input id="setCategoryNew" type="text" placeholder="Type the new course name" style="display:none; margin-top:8px;" />
+      <p class="lede" style="margin-top:6px;">This decides which students can see and take this quiz — only students on this course (plus General).</p>
       <label>Time limit in minutes (optional)</label>
       <input id="setTimeLimit" type="number" min="1" placeholder="Leave blank for no timer" />
     </div>
@@ -302,6 +410,10 @@ Correct: B</pre>
       <div id="saveMsg"></div>
     </div>
   `;
+
+  document.getElementById('setCategory').onchange = (e) => {
+    document.getElementById('setCategoryNew').style.display = e.target.value === '__new__' ? 'block' : 'none';
+  };
 
   document.getElementById('bulkParseBtn').onclick = () => {
     const text = document.getElementById('bulkText').value;
@@ -348,10 +460,12 @@ Correct: B</pre>
 
   document.getElementById('saveSetBtn').onclick = async () => {
     const name = document.getElementById('setName').value.trim();
-    const category = document.getElementById('setCategory').value.trim();
+    const categorySelect = document.getElementById('setCategory').value;
+    const category = categorySelect === '__new__' ? document.getElementById('setCategoryNew').value.trim() : categorySelect;
     const time_limit_minutes = document.getElementById('setTimeLimit').value.trim();
     const msg = document.getElementById('saveMsg');
     if (!name) { msg.innerHTML = `<div class="error-msg">Give the set a name</div>`; return; }
+    if (categorySelect === '__new__' && !category) { msg.innerHTML = `<div class="error-msg">Type the new course's name</div>`; return; }
     if (draftQuestions.length === 0) { msg.innerHTML = `<div class="error-msg">Add at least one question</div>`; return; }
     try {
       await api('create-set', { method: 'POST', body: { name, questions: draftQuestions, category, time_limit_minutes } });
@@ -422,14 +536,30 @@ async function loadStudents() {
   const body = document.getElementById('tabBody');
   try {
     const { students } = await api('admin-students');
+    const byCourse = {};
+    students.forEach((s) => {
+      const c = s.track || 'No course set';
+      byCourse[c] = (byCourse[c] || 0) + 1;
+    });
+    const courseNames = Object.keys(byCourse).sort((a, b) => (a === 'No course set' ? 1 : b === 'No course set' ? -1 : a.localeCompare(b)));
+
     body.innerHTML = `
+      <div class="card">
+        <h2>Students by course</h2>
+        ${courseNames.map((c) => `
+          <div class="set-row">
+            <div class="set-name">${esc(c)}</div>
+            <span class="pill done">${byCourse[c]}</span>
+          </div>
+        `).join('')}
+      </div>
       <div class="card">
         <h2>All students (${students.length})</h2>
         ${students.length === 0 ? `<div class="empty-state">No students registered yet.</div>` : students.map((s) => `
           <div class="set-row" data-student="${s.id}" data-name="${esc(s.name)}" style="cursor:pointer;">
             <div>
               <div class="set-name">${esc(s.name)} ${s.blocked ? '<span class="pill blocked">Blocked</span>' : ''}</div>
-              <div class="set-meta">${esc(s.phone)} · ${esc(s.track || 'No track set')} · joined ${new Date(s.created_at).toLocaleDateString()} · ${s.quizzes_taken} quiz(zes) taken</div>
+              <div class="set-meta">${esc(s.phone)} · ${esc(s.track || 'No course set')} · joined ${new Date(s.created_at).toLocaleDateString()} · ${s.quizzes_taken} quiz(zes) taken</div>
             </div>
             <span class="pill done">${s.total_score}</span>
           </div>
@@ -471,9 +601,14 @@ async function viewStudentHistory(studentId, name) {
         <button class="btn-outline btn-block" id="saveNameBtn" style="margin-top:10px;">Save name</button>
         <div id="nameMsg"></div>
 
-        <label style="margin-top:18px;">Track</label>
+        <label style="margin-top:18px;">Reset password</label>
+        <input id="newPassword" type="text" placeholder="Type a new password for this student" />
+        <button class="btn-outline btn-block" id="resetPasswordBtn" style="margin-top:10px;">Reset password</button>
+        <div id="passwordMsg"></div>
+
+        <label style="margin-top:18px;">Course</label>
         <select id="trackEdit">${tracks.map((t) => `<option value="${esc(t)}" ${student?.track === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-        <button class="btn-outline btn-block" id="saveTrackBtn" style="margin-top:10px;">Save track</button>
+        <button class="btn-outline btn-block" id="saveTrackBtn" style="margin-top:10px;">Save course</button>
         <div id="trackMsg"></div>
 
         <div style="display:flex; gap:8px; margin-top:18px;">
@@ -509,6 +644,22 @@ async function viewStudentHistory(studentId, name) {
       }
     };
 
+    document.getElementById('resetPasswordBtn').onclick = async () => {
+      const newPassword = document.getElementById('newPassword').value;
+      const msg = document.getElementById('passwordMsg');
+      if (!newPassword || newPassword.length < 4) {
+        msg.innerHTML = `<div class="error-msg">Password must be at least 4 characters</div>`;
+        return;
+      }
+      try {
+        await api('admin-reset-password', { method: 'POST', body: { phone: student.phone, newPassword } });
+        msg.innerHTML = `<div class="ok-msg">Password reset. Tell ${esc(student.name)} their new password is: <b>${esc(newPassword)}</b></div>`;
+        document.getElementById('newPassword').value = '';
+      } catch (e) {
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not reset password')}</div>`;
+      }
+    };
+
     document.getElementById('saveTrackBtn').onclick = async () => {
       const track = document.getElementById('trackEdit').value;
       const msg = document.getElementById('trackMsg');
@@ -516,7 +667,7 @@ async function viewStudentHistory(studentId, name) {
         await api('admin-set-student-track', { method: 'POST', body: { phone: student.phone, track } });
         viewStudentHistory(studentId, name);
       } catch (e) {
-        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not update track')}</div>`;
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not update course')}</div>`;
       }
     };
 

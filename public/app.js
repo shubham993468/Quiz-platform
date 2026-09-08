@@ -93,9 +93,9 @@ async function renderChooseTrack() {
   }
   app.innerHTML = `
     <div class="card">
-      <h2>Choose your track</h2>
+      <h2>Choose your course</h2>
       <p class="lede">Pick the subject you're studying. This decides which quizzes you can take and which leaderboard you appear on. Once set, only the admin can change it.</p>
-      <label>Track / subject</label>
+      <label>Course</label>
       <select id="trackSelect">${tracks.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
       <button class="btn-primary" id="setTrackBtn">Continue</button>
       <div id="msg"></div>
@@ -110,7 +110,15 @@ async function renderChooseTrack() {
       localStorage.setItem('quizz_track', data.track);
       render();
     } catch (e) {
-      msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not save your track')}</div>`;
+      if (e.track) {
+        // Server already has a track for this account (e.g. the admin set it) -
+        // this device's saved session just hadn't caught up yet. Recover silently.
+        state.track = e.track;
+        localStorage.setItem('quizz_track', e.track);
+        render();
+        return;
+      }
+      msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not save your course')}</div>`;
     }
   };
 }
@@ -167,7 +175,7 @@ function renderAuth() {
         <input id="phone" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit number" />
         <label>Password</label>
         <input id="password" type="password" placeholder="Choose a password" />
-        <label>Your track / subject</label>
+        <label>Your course</label>
         <select id="track">${tracksCache.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
         <p class="lede" style="margin-top:4px;">This decides which quizzes and leaderboard you'll see. Only the admin can change it later.</p>
         <button class="btn-primary" id="submitBtn">Create account</button>
@@ -501,7 +509,7 @@ function renderBoardCard(data) {
         <tbody>
           ${rows.map((r) => `
             <tr class="${data.my_rank && r.rank === data.my_rank.rank ? 'me' : ''}">
-              <td><span class="rank-badge ${r.rank <= 3 ? 'gold' : ''}">${medals[r.rank] || r.rank}</span></td>
+              <td><span class="rank-badge ${r.rank === 1 ? 'gold' : r.rank === 2 ? 'silver' : r.rank === 3 ? 'bronze' : ''}">${medals[r.rank] || r.rank}</span></td>
               <td>${esc(r.name)}</td>
               <td style="text-align:right">${r.total_score}</td>
             </tr>
@@ -511,7 +519,7 @@ function renderBoardCard(data) {
     </div>
     <div class="card">
       ${data.my_rank
-        ? `<h3>Your rank</h3><p class="lede">You're currently rank <b>#${data.my_rank.rank}</b> with a total score of <b>${data.my_rank.total_score}</b>.</p>`
+        ? `<h3>Your rank</h3><p class="lede">You're currently rank <b>#${data.my_rank.rank}</b> of <b>${data.total_students_ranked}</b> students, with a total score of <b>${data.my_rank.total_score}</b>.</p>`
         : `<h3>Not ranked yet</h3><p class="lede">Take a quiz and check back after the next 9 PM update to see your rank.</p>`}
     </div>
   `;
@@ -522,7 +530,7 @@ async function loadLeaderboard(view) {
   const body = document.getElementById('tabBody');
   body.innerHTML = `
     <div class="tabs">
-      <button id="lbTrack" class="${view === 'track' ? 'active' : ''}">My Track</button>
+      <button id="lbTrack" class="${view === 'track' ? 'active' : ''}">My Course</button>
       <button id="lbOverall" class="${view === 'overall' ? 'active' : ''}">All Courses</button>
     </div>
     <div id="lbBody"><div class="loading">Loading…</div></div>
@@ -543,10 +551,14 @@ async function loadProfile() {
   const body = document.getElementById('tabBody');
   try {
     const data = await api('my-profile');
+    if (data.profile.track && data.profile.track !== state.track) {
+      state.track = data.profile.track;
+      localStorage.setItem('quizz_track', data.profile.track);
+    }
     body.innerHTML = `
       <div class="card">
         <h2>${esc(data.profile.name)}</h2>
-        <p class="lede">Phone: ${esc(data.profile.phone)} · Track: ${esc(data.profile.track || 'Not set')}</p>
+        <p class="lede">Phone: ${esc(data.profile.phone)} · Course: ${esc(data.profile.track || 'Not set')}</p>
         <div class="stat-row">
           <div><span>${data.attempts.length}</span><div class="lbl">Quizzes taken</div></div>
           <div><span>${data.total_score}</span><div class="lbl">Total score</div></div>

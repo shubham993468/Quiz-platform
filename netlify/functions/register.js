@@ -12,7 +12,7 @@ exports.handler = async (event) => {
       return json(400, { error: 'Name, phone number and password are required' });
     }
     if (!track || !String(track).trim()) {
-      return json(400, { error: 'Please choose your track/subject' });
+      return json(400, { error: 'Please choose your course' });
     }
     const cleanPhone = String(phone).replace(/\D/g, '');
     if (cleanPhone.length !== 10) {

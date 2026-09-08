@@ -6,6 +6,13 @@
   --gold: #d79c33;
   --gold-deep: #b5801e;
   --gold-soft: rgba(215, 156, 51, 0.14);
+  --teal: #1c7d74;
+  --teal-deep: #125a53;
+  --teal-soft: rgba(28, 125, 116, 0.12);
+  --silver: #9aa5b8;
+  --silver-deep: #737f92;
+  --bronze: #b8703f;
+  --bronze-deep: #8f5530;
   --ink: #1c2534;
   --ink-soft: #5b6478;
   --line: #d7dce6;
@@ -26,7 +33,8 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--paper);
+  background: linear-gradient(180deg, #eef1f8 0%, #e6ebf5 45%, #eef1f6 100%);
+  background-attachment: fixed;
   color: var(--ink);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
@@ -151,47 +159,62 @@ input:focus, select:focus, textarea:focus, button:focus {
 button, .btn {
   cursor: pointer;
   border: none;
-  border-radius: 8px;
-  padding: 12px 16px;
+  border-radius: 999px;
+  padding: 13px 20px;
   font-size: 0.96rem;
   font-weight: 600;
   font-family: var(--sans);
-  transition: transform 0.08s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.08s ease, background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-button:active { transform: scale(0.98); }
+button:active { transform: scale(0.97); }
 
 .btn-primary {
-  background: var(--navy);
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
   color: #fff;
   width: 100%;
   margin-top: 18px;
   box-shadow: var(--shadow-md);
 }
 
-.btn-primary:active { background: var(--navy-deep); }
+.btn-primary:active { background: linear-gradient(135deg, var(--navy-deep) 0%, var(--navy-deep) 100%); }
 
 .btn-gold {
-  background: var(--gold);
-  color: var(--navy-deep);
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%);
+  color: #fff;
+  box-shadow: 0 8px 20px -10px rgba(181, 128, 30, 0.6);
 }
 
-.btn-gold:active { background: var(--gold-deep); }
+.btn-gold:active { background: linear-gradient(135deg, var(--gold-deep) 0%, var(--gold-deep) 100%); }
+
+.btn-teal {
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-deep) 100%);
+  color: #fff;
+  box-shadow: 0 8px 20px -10px rgba(18, 90, 83, 0.5);
+}
+
+.btn-teal:active { background: linear-gradient(135deg, var(--teal-deep) 0%, var(--teal-deep) 100%); }
 
 .btn-outline {
-  background: transparent;
-  border: 1px solid var(--line);
+  background: #fff;
+  border: 1.5px solid var(--line);
   color: var(--ink);
+  border-radius: var(--radius);
 }
+
+.btn-outline:active { background: var(--paper); border-color: var(--navy); }
 
 .btn-danger {
-  background: transparent;
+  background: #fff;
   color: var(--bad);
-  border: 1px solid #e6c3bc;
+  border: 1.5px solid #e6c3bc;
+  border-radius: var(--radius);
 }
 
+.btn-danger:active { background: var(--bad-soft); }
+
 .btn-block { width: 100%; }
-.btn-sm { padding: 7px 12px; font-size: 0.82rem; }
+.btn-sm { padding: 8px 14px; font-size: 0.82rem; border-radius: 999px; }
 
 .error-msg {
   background: #fbeae6;
@@ -230,7 +253,7 @@ button:active { transform: scale(0.98); }
 }
 
 .tabs button.active {
-  background: var(--navy);
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
   color: #fff;
   border-color: var(--navy);
 }
@@ -282,19 +305,20 @@ button:active { transform: scale(0.98); }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
   margin-bottom: 8px;
   font-size: 0.92rem;
   cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
 }
 
-.option input { width: auto; }
+.option input { width: auto; accent-color: var(--navy); }
 
 .option.selected {
-  border-color: var(--navy);
-  background: #eef1f8;
+  border-color: var(--gold);
+  background: linear-gradient(135deg, var(--gold-soft) 0%, rgba(215, 156, 51, 0.04) 100%);
 }
 
 .stat-row {
@@ -331,21 +355,22 @@ table.leaderboard td {
   border-bottom: 1px solid #eceff5;
 }
 
-table.leaderboard tr.me { background: #fbf3e2; }
 
 .rank-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px; height: 24px;
+  width: 26px; height: 26px;
   border-radius: 50%;
-  background: var(--navy);
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
   color: #fff;
   font-size: 0.75rem;
   font-weight: 700;
 }
 
-.rank-badge.gold { background: var(--gold); color: var(--navy-deep); font-size: 0.95rem; }
+.rank-badge.gold { background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%); color: #fff; font-size: 0.95rem; }
+.rank-badge.silver { background: linear-gradient(135deg, var(--silver) 0%, var(--silver-deep) 100%); color: #fff; font-size: 0.95rem; }
+.rank-badge.bronze { background: linear-gradient(135deg, var(--bronze) 0%, var(--bronze-deep) 100%); color: #fff; font-size: 0.95rem; }
 
 .empty-state {
   text-align: center;
@@ -457,7 +482,7 @@ footer.app-footer {
 
 .progress-fill {
   height: 100%;
-  background: var(--gold);
+  background: linear-gradient(90deg, var(--gold) 0%, var(--gold-deep) 100%);
   border-radius: 4px;
   transition: width 0.25s ease;
 }

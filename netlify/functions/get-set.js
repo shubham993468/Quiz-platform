@@ -12,7 +12,7 @@ exports.handler = async (event) => {
     if (!setId) return json(400, { error: 'setId is required' });
 
     const record = await getStudentRecord(student);
-    if (!record?.track) return json(403, { error: 'Please choose your track before taking a quiz' });
+    if (!record?.track) return json(403, { error: 'Please choose your course before taking a quiz' });
     if (record.blocked) return json(403, { error: 'Your account has been blocked. Please contact the admin.' });
 
     const set = await stores.sets().get(setId, { type: 'json' });
@@ -20,7 +20,7 @@ exports.handler = async (event) => {
 
     const category = set.category || 'General';
     if (category !== 'General' && category !== record.track) {
-      return json(403, { error: 'This quiz is not available for your track' });
+      return json(403, { error: 'This quiz is not available for your course' });
     }
 
     const existingAttempt = await stores.attempts().get(`${student.id}__${setId}`, { type: 'json' });

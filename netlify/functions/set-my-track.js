@@ -9,14 +9,14 @@ exports.handler = async (event) => {
 
   try {
     const { track } = JSON.parse(event.body || '{}');
-    if (!track || !String(track).trim()) return json(400, { error: 'Please choose a track' });
+    if (!track || !String(track).trim()) return json(400, { error: 'Please choose a course' });
 
     const studentsStore = stores.students();
     const record = await studentsStore.get(student.phone, { type: 'json' });
     if (!record) return json(404, { error: 'Account not found' });
 
     if (record.track) {
-      return json(403, { error: 'Your track is already set. Ask the admin to change it.' });
+      return json(403, { error: 'Your course is already set to ' + record.track + '.', track: record.track });
     }
 
     record.track = String(track).trim();
