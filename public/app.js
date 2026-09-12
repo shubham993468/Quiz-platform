@@ -133,7 +133,7 @@ function renderAuth() {
         <path d="M17 27.5L23 33L36 20" stroke="#182849" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <h1>Test yourself. Track your rank.</h1>
-      <p>Short quizzes, honest scoring, and a leaderboard that updates every night.</p>
+      <p>Short quizzes, honest scoring, and a leaderboard that updates the instant you finish.</p>
     </div>
     <div class="tabs">
       <button id="tabLogin" class="active">Log in</button>
@@ -226,6 +226,7 @@ function renderHome() {
     <div class="tabs">
       <button data-tab="quiz" class="${state.tab === 'quiz' ? 'active' : ''}">Take Quiz</button>
       <button data-tab="leaderboard" class="${state.tab === 'leaderboard' ? 'active' : ''}">Leaderboard</button>
+      <button data-tab="attendance" id="attendanceTabBtn" class="att-pending ${state.tab === 'attendance' ? 'active' : ''}">Attendance</button>
       <button data-tab="profile" class="${state.tab === 'profile' ? 'active' : ''}">My Profile</button>
     </div>
     <div id="tabBody"><div class="loading">Loading…</div></div>
@@ -234,9 +235,98 @@ function renderHome() {
     b.onclick = () => { state.tab = b.dataset.tab; render(); };
   });
 
+  refreshAttendanceTabColor();
+
   if (state.tab === 'quiz') loadQuizList();
   else if (state.tab === 'leaderboard') loadLeaderboard();
+  else if (state.tab === 'attendance') loadAttendance();
   else loadProfile();
+}
+
+async function refreshAttendanceTabColor() {
+  try {
+    const data = await api('attendance-status');
+    const btn = document.getElementById('attendanceTabBtn');
+    if (!btn) return; // the person may have already switched tabs
+    btn.classList.remove('att-pending', 'att-done');
+    btn.classList.add(data.marked ? 'att-done' : 'att-pending');
+  } catch (e) {
+    // non-critical - leave the tab in its default state
+  }
+}
+
+async function loadAttendance() {
+  const body = document.getElementById('tabBody');
+  try {
+    const data = await api('attendance-status');
+    if (data.marked) {
+      body.innerHTML = `
+        <div class="card">
+          <h2>Today's attendance</h2>
+          <div class="att-done-banner">
+            <div class="att-done-icon">✓</div>
+            <div>
+              <div class="att-done-title">${data.status === 'present' ? 'Marked Present' : 'Marked Absent'}</div>
+              <div class="lede" style="margin:2px 0 0;">${data.entered_name ? `As ${esc(data.entered_name)} · ` : ''}${new Date(data.marked_at).toLocaleTimeString()}</div>
+            </div>
+          </div>
+          <p class="lede" style="margin-top:14px;">You can mark attendance once per day. Come back tomorrow.</p>
+        </div>
+      `;
+      return;
+    }
+
+    body.innerHTML = `
+      <div class="card" id="attChoiceCard">
+        <h2>Mark today's attendance</h2>
+        <p class="lede">Select one — you can only do this once per day.</p>
+        <div style="display:flex; gap:10px; margin-top:14px;">
+          <button class="btn-teal" style="flex:1;" id="presentBtn">I'm Present</button>
+          <button class="btn-outline" style="flex:1;" id="absentBtn">I'm Absent</button>
+        </div>
+        <div id="attFormArea" style="margin-top:16px;"></div>
+        <div id="attMsg"></div>
+      </div>
+    `;
+
+    document.getElementById('absentBtn').onclick = async () => {
+      if (!confirm("Mark yourself Absent for today?")) return;
+      const msg = document.getElementById('attMsg');
+      try {
+        await api('mark-attendance', { method: 'POST', body: { status: 'absent' } });
+        loadAttendance();
+        refreshAttendanceTabColor();
+      } catch (e) {
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not mark attendance')}</div>`;
+      }
+    };
+
+    document.getElementById('presentBtn').onclick = () => {
+      document.getElementById('attFormArea').innerHTML = `
+        <label>Enter your name</label>
+        <input id="attName" type="text" placeholder="Type your name" />
+        <label>Enter today's 3-digit code</label>
+        <input id="attCode" type="text" inputmode="numeric" maxlength="3" placeholder="e.g. 482" />
+        <button class="btn-primary" id="attSubmitBtn">Submit</button>
+      `;
+      document.getElementById('attSubmitBtn').onclick = async () => {
+        const name = document.getElementById('attName').value.trim();
+        const code = document.getElementById('attCode').value.trim();
+        const msg = document.getElementById('attMsg');
+        if (!name) { msg.innerHTML = `<div class="error-msg">Please type your name</div>`; return; }
+        if (!/^\d{3}$/.test(code)) { msg.innerHTML = `<div class="error-msg">Enter the 3-digit code</div>`; return; }
+        try {
+          await api('mark-attendance', { method: 'POST', body: { status: 'present', name, code } });
+          loadAttendance();
+          refreshAttendanceTabColor();
+        } catch (e) {
+          msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not mark attendance')}</div>`;
+        }
+      };
+    };
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not load attendance')}</div>`;
+  }
 }
 
 async function loadQuizList() {
@@ -502,7 +592,8 @@ function renderBoardCard(data) {
   return `
     <div class="card">
       <h2>Top scorers — ${esc(data.track)}</h2>
-      <p class="lede">${data.updated_at ? 'Updated ' + new Date(data.updated_at).toLocaleString() : 'Rankings update every day at 9 PM'}</p>
+      <p class="lede">${data.updated_at ? 'Updated ' + new Date(data.updated_at).toLocaleString() : 'Rankings update instantly as quizzes are submitted'}</p>
+      ${data.ranking_since ? `<p class="lede" style="margin-top:-8px;">Counting quizzes taken since ${data.ranking_since}</p>` : ''}
       ${rows.length === 0 ? `<div class="empty-state">No rankings yet — be the first to take a quiz!</div>` : `
       <table class="leaderboard">
         <thead><tr><th>Rank</th><th>Name</th><th style="text-align:right">Score</th></tr></thead>
@@ -520,7 +611,7 @@ function renderBoardCard(data) {
     <div class="card">
       ${data.my_rank
         ? `<h3>Your rank</h3><p class="lede">You're currently rank <b>#${data.my_rank.rank}</b> of <b>${data.total_students_ranked}</b> students, with a total score of <b>${data.my_rank.total_score}</b>.</p>`
-        : `<h3>Not ranked yet</h3><p class="lede">Take a quiz and check back after the next 9 PM update to see your rank.</p>`}
+        : `<h3>Not ranked yet</h3><p class="lede">Take a quiz to appear on the leaderboard right away.</p>`}
     </div>
   `;
 }
@@ -563,6 +654,7 @@ async function loadProfile() {
           <div><span>${data.attempts.length}</span><div class="lbl">Quizzes taken</div></div>
           <div><span>${data.total_score}</span><div class="lbl">Total score</div></div>
         </div>
+        ${data.ranking_since ? `<p class="lede" style="margin-top:10px;">Total score counts quizzes taken since ${data.ranking_since} — your full history is below.</p>` : ''}
       </div>
       <div class="card">
         <h3>History</h3>

@@ -15,8 +15,25 @@ const stores = {
   sets: () => getStore('sets'),           // key = setId, value = {id,name,created_at}
   questions: () => getStore('questions'), // key = setId, value = [ {id,question_text,option_a..d,correct_option} ]
   attempts: () => getStore('attempts'),   // key = `${studentId}__${setId}`, value = {score,correct_count,wrong_count,total_questions,created_at,set_name,student_name}
-  leaderboard: () => getStore('leaderboard'), // key = "current", value = {rows:[...], updated_at}
+  leaderboard: () => getStore('leaderboard'), // unused now that ranking is computed live - kept only so old data doesn't error if ever read
+  attendanceCodes: () => getStore('attendance_codes'), // key = "YYYY-MM-DD" (IST), value = {code, set_at}
+  attendance: () => getStore('attendance'), // key = `${date}__${studentId}`, value = {status, entered_name, student_id, student_name, date, marked_at}
+  settings: () => getStore('settings'), // key = "ranking_start_date", value = {date: "YYYY-MM-DD", set_at}
 };
+
+// This app is used by an Indian classroom, so "today" for attendance and
+// daily codes always means the calendar day in India, regardless of which
+// timezone the Netlify server itself happens to run in.
+function todayIST() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+}
+
+// Converts a plain "YYYY-MM-DD" (meant as an IST calendar date) into the UTC
+// ISO timestamp for the very start of that day in India - so it can be
+// compared directly against attempt.created_at (also a UTC ISO timestamp).
+function istDateToUtcISO(dateStr) {
+  return new Date(`${dateStr}T00:00:00+05:30`).toISOString();
+}
 
 // JWT_SECRET must be set once in Netlify: Site settings -> Environment variables.
 // Falling back to a default so nothing crashes if it's briefly unset, but you should set your own.
@@ -87,4 +104,6 @@ module.exports = {
   newId,
   initBlobs,
   getStudentRecord,
+  todayIST,
+  istDateToUtcISO,
 };

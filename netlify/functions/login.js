@@ -14,7 +14,7 @@ exports.handler = async (event) => {
 
     if (!student) return json(401, { error: 'No account found with this phone number' });
 
-    const ok = await bcrypt.compare(password, student.password_hash);
+    const ok = await bcrypt.compare(String(password).trim(), student.password_hash);
     if (!ok) return json(401, { error: 'Incorrect password' });
 
     if (student.blocked) {

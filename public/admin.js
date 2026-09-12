@@ -78,6 +78,7 @@ function renderHome() {
       <button data-tab="sets" class="${state.tab === 'sets' ? 'active' : ''}">📋 Question Sets</button>
       <button data-tab="create" class="${state.tab === 'create' ? 'active' : ''}">➕ New Set</button>
       <button data-tab="students" class="${state.tab === 'students' ? 'active' : ''}">👥 Students</button>
+      <button data-tab="attendance" class="${state.tab === 'attendance' ? 'active' : ''}">🗓️ Attendance</button>
     </div>
     <div id="tabBody"><div class="loading">Loading…</div></div>
   `;
@@ -85,17 +86,19 @@ function renderHome() {
 
   if (state.tab === 'sets') loadSets();
   else if (state.tab === 'create') renderCreateSet();
-  else loadStudents();
+  else if (state.tab === 'students') loadStudents();
+  else loadAttendanceAdmin();
 }
 
 // ---------- SETS LIST ----------
 async function loadSets() {
   const body = document.getElementById('tabBody');
   try {
-    const [{ sets }, { students }, { tracks }] = await Promise.all([
+    const [{ sets }, { students }, { tracks }, rankingStart] = await Promise.all([
       api('list-sets'),
       api('admin-students'),
       api('list-tracks'),
+      api('admin-ranking-start'),
     ]);
     const groups = {};
     sets.forEach((s) => {
@@ -111,8 +114,19 @@ async function loadSets() {
           <div><span>${students.length}</span><div class="lbl">Students</div></div>
           <div><span>${tracks.length}</span><div class="lbl">Courses</div></div>
         </div>
-        <button class="btn-outline btn-block" id="recomputeBtn" style="margin-top:14px;">Recompute ranking now</button>
-        <div id="recomputeMsg"></div>
+        <p class="lede" style="margin-top:14px; margin-bottom:0;">Leaderboard rankings update instantly as students submit quizzes — no refresh needed.</p>
+      </div>
+      <div class="card">
+        <h3>Ranking start date</h3>
+        <p class="lede">Only quizzes taken on or after this date count toward the leaderboard and rank. Use this to exclude old scores — for example, from before students were restricted to their own course.</p>
+        <p class="lede"><b>${rankingStart.date ? `Currently counting from ${rankingStart.date} onward.` : 'Currently counting every quiz ever taken (no cutoff set).'}</b></p>
+        <label>Set a new start date</label>
+        <input id="rankingStartInput" type="date" value="${rankingStart.date || ''}" />
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn-gold" style="flex:1;" id="setRankingStartBtn">Save date</button>
+          ${rankingStart.date ? `<button class="btn-outline" style="flex:1;" id="clearRankingStartBtn">Clear (count everything)</button>` : ''}
+        </div>
+        <div id="rankingStartMsg"></div>
       </div>
       ${sets.length === 0 ? `<div class="card"><div class="empty-state">No sets yet. Create one from the "+ New Set" tab.</div></div>` : catNames.map((cat) => `
       <div class="card">
@@ -132,16 +146,30 @@ async function loadSets() {
       </div>
       `).join('')}
     `;
-    document.getElementById('recomputeBtn').onclick = async () => {
-      const m = document.getElementById('recomputeMsg');
-      m.innerHTML = '<p class="lede">Recomputing…</p>';
+    document.getElementById('setRankingStartBtn').onclick = async () => {
+      const date = document.getElementById('rankingStartInput').value;
+      const msg = document.getElementById('rankingStartMsg');
+      if (!date) { msg.innerHTML = `<div class="error-msg">Pick a date first</div>`; return; }
+      if (!confirm(`From now on, only quizzes taken on or after ${date} will count toward rankings. Continue?`)) return;
       try {
-        const r = await api('recompute-ranking');
-        m.innerHTML = `<div class="ok-msg">Done — ${r.students_ranked} student ranking(s) updated across ${r.tracks_ranked} course(s).</div>`;
+        await api('admin-ranking-start', { method: 'POST', body: { date } });
+        loadSets();
       } catch (e) {
-        m.innerHTML = `<div class="error-msg">${esc(e.error || 'Failed')}</div>`;
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not save date')}</div>`;
       }
     };
+    const clearBtn = document.getElementById('clearRankingStartBtn');
+    if (clearBtn) {
+      clearBtn.onclick = async () => {
+        if (!confirm('Go back to counting every quiz ever taken, with no start date?')) return;
+        try {
+          await api('admin-ranking-start', { method: 'POST', body: { date: null } });
+          loadSets();
+        } catch (e) {
+          document.getElementById('rankingStartMsg').innerHTML = `<div class="error-msg">${esc(e.error || 'Could not clear date')}</div>`;
+        }
+      };
+    }
     body.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => viewSet(b.dataset.view); });
     body.querySelectorAll('[data-del]').forEach((b) => {
       b.onclick = async () => {
@@ -645,7 +673,7 @@ async function viewStudentHistory(studentId, name) {
     };
 
     document.getElementById('resetPasswordBtn').onclick = async () => {
-      const newPassword = document.getElementById('newPassword').value;
+      const newPassword = document.getElementById('newPassword').value.trim();
       const msg = document.getElementById('passwordMsg');
       if (!newPassword || newPassword.length < 4) {
         msg.innerHTML = `<div class="error-msg">Password must be at least 4 characters</div>`;
@@ -653,8 +681,25 @@ async function viewStudentHistory(studentId, name) {
       }
       try {
         await api('admin-reset-password', { method: 'POST', body: { phone: student.phone, newPassword } });
-        msg.innerHTML = `<div class="ok-msg">Password reset. Tell ${esc(student.name)} their new password is: <b>${esc(newPassword)}</b></div>`;
+        msg.innerHTML = `
+          <div class="ok-msg">
+            Password reset. Tell ${esc(student.name)} their new password is:
+            <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+              <code style="background:#fff; padding:6px 10px; border-radius:6px; font-size:1rem; letter-spacing:0.5px;">${esc(newPassword)}</code>
+              <button class="btn-outline btn-sm" id="copyPwBtn" type="button">Copy</button>
+            </div>
+            <p class="lede" style="margin-top:8px; margin-bottom:0;">Tip: have them type it in manually rather than pasting from a message, in case a stray space sneaks in.</p>
+          </div>`;
         document.getElementById('newPassword').value = '';
+        const copyBtn = document.getElementById('copyPwBtn');
+        if (copyBtn) {
+          copyBtn.onclick = () => {
+            navigator.clipboard.writeText(newPassword).then(() => {
+              copyBtn.textContent = 'Copied!';
+              setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+            });
+          };
+        }
       } catch (e) {
         msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not reset password')}</div>`;
       }
@@ -695,6 +740,61 @@ async function viewStudentHistory(studentId, name) {
     };
   } catch (e) {
     body.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not load history')}</div>`;
+  }
+}
+
+// ---------- ATTENDANCE ----------
+async function loadAttendanceAdmin(date) {
+  const body = document.getElementById('tabBody');
+  body.innerHTML = `<div class="loading">Loading…</div>`;
+  try {
+    const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+    const data = await api(`admin-attendance-report${qs}`);
+    body.innerHTML = `
+      <div class="card">
+        <h2>Set today's code</h2>
+        <p class="lede">Give this 3-digit code to students during today's live class. Setting a new code replaces the old one for today.</p>
+        <input id="codeInput" type="text" inputmode="numeric" maxlength="3" placeholder="e.g. 482" />
+        <button class="btn-gold btn-block" id="setCodeBtn" style="margin-top:10px;">Set code for today</button>
+        <div id="codeMsg"></div>
+      </div>
+      <div class="card">
+        <h2>Attendance report</h2>
+        <label>Date</label>
+        <input id="reportDate" type="date" value="${data.date}" />
+        <div class="stat-row" style="margin-top:14px;">
+          <div><span style="color:var(--good)">${data.present_count}</span><div class="lbl">Present</div></div>
+          <div><span style="color:var(--bad)">${data.absent_count}</span><div class="lbl">Absent</div></div>
+          <div><span>${data.not_marked_count}</span><div class="lbl">Not marked</div></div>
+        </div>
+        <p class="lede" style="margin-top:10px;">${data.code_set ? 'A code has been set for this date.' : 'No code has been set for this date yet.'}</p>
+      </div>
+      <div class="card">
+        ${data.report.map((r) => `
+          <div class="set-row">
+            <div>
+              <div class="set-name">${esc(r.name)}${r.entered_name && r.entered_name !== r.name ? ` <span class="lede" style="font-size:0.78rem;">(typed: ${esc(r.entered_name)})</span>` : ''}</div>
+              <div class="set-meta">${esc(r.phone)} · ${esc(r.track || 'No course set')}${r.marked_at ? ' · ' + new Date(r.marked_at).toLocaleTimeString() : ''}</div>
+            </div>
+            <span class="pill ${r.status === 'present' ? 'done' : r.status === 'absent' ? 'blocked' : ''}">${r.status === 'not_marked' ? 'Not marked' : r.status.charAt(0).toUpperCase() + r.status.slice(1)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    document.getElementById('setCodeBtn').onclick = async () => {
+      const code = document.getElementById('codeInput').value.trim();
+      const msg = document.getElementById('codeMsg');
+      if (!/^\d{3}$/.test(code)) { msg.innerHTML = `<div class="error-msg">Code must be exactly 3 digits</div>`; return; }
+      try {
+        await api('admin-set-attendance-code', { method: 'POST', body: { code } });
+        msg.innerHTML = `<div class="ok-msg">Code set for today: <b>${esc(code)}</b></div>`;
+      } catch (e) {
+        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not set code')}</div>`;
+      }
+    };
+    document.getElementById('reportDate').onchange = (e) => loadAttendanceAdmin(e.target.value);
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not load attendance')}</div>`;
   }
 }
 

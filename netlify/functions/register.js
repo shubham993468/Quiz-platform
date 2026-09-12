@@ -21,14 +21,14 @@ exports.handler = async (event) => {
     if (password.length < 4) {
       return json(400, { error: 'Password must be at least 4 characters' });
     }
-
+    const cleanPassword = password.trim();
     const studentsStore = stores.students();
     const existing = await studentsStore.get(cleanPhone, { type: 'json' });
     if (existing) {
       return json(409, { error: 'An account with this phone number already exists. Please log in instead.' });
     }
 
-    const password_hash = await bcrypt.hash(password, 10);
+    const password_hash = await bcrypt.hash(cleanPassword, 10);
     const student = {
       id: newId(),
       name: name.trim(),

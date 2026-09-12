@@ -1,4 +1,4 @@
-const { stores, json, requireStudent, getStudentRecord, initBlobs } = require('./_utils');
+const { stores, json, requireStudent, getStudentRecord, initBlobs, istDateToUtcISO } = require('./_utils');
 
 exports.handler = async (event) => {
   initBlobs(event);
@@ -17,12 +17,20 @@ exports.handler = async (event) => {
     );
     attempts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    const total_score = attempts.reduce((sum, a) => sum + a.score, 0);
+    const rankingStart = await stores.settings().get('ranking_start_date', { type: 'json' });
+    const cutoffISO = rankingStart ? istDateToUtcISO(rankingStart.date) : null;
+
+    // "Total score" here matches what counts on the leaderboard - if the admin
+    // set a ranking start date, older attempts still show in the history below
+    // but don't count toward this number, same as they don't count on the board.
+    const counted = cutoffISO ? attempts.filter((a) => a.created_at >= cutoffISO) : attempts;
+    const total_score = counted.reduce((sum, a) => sum + a.score, 0);
 
     return json(200, {
       profile: { name: student.name, phone: student.phone, track: record?.track || null },
       attempts,
       total_score: Math.round(total_score * 100) / 100,
+      ranking_since: rankingStart ? rankingStart.date : null,
     });
   } catch (err) {
     console.error(err);

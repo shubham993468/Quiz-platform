@@ -1,11 +1,9 @@
-const { stores, json, requireStudent, getStudentRecord, initBlobs } = require('./_utils');
+const { stores, json, requireStudent, getStudentRecord, initBlobs, istDateToUtcISO } = require('./_utils');
 
-const OVERALL_KEY = 'overall';
-
-function boardKey(track) {
-  return `track__${encodeURIComponent(track)}`;
-}
-
+// Rankings used to be a once-a-day snapshot recomputed on a schedule. Now the
+// board is computed fresh on every request directly from attempts, so a
+// student's rank updates the instant they submit a quiz - no daily refresh,
+// no "recompute" button needed.
 exports.handler = async (event) => {
   initBlobs(event);
   if (event.httpMethod !== 'GET') return json(405, { error: 'Method not allowed' });
@@ -17,10 +15,47 @@ exports.handler = async (event) => {
     const wantsOverall = event.queryStringParameters && event.queryStringParameters.overall === '1';
     const requestedTrack = event.queryStringParameters && event.queryStringParameters.track;
     const track = wantsOverall ? 'All courses' : (requestedTrack || record?.track || 'General');
-    const key = wantsOverall ? OVERALL_KEY : boardKey(track);
 
-    const board = await stores.leaderboard().get(key, { type: 'json' });
-    const rows = board ? board.rows : [];
+    const rankingStart = await stores.settings().get('ranking_start_date', { type: 'json' });
+    const cutoffISO = rankingStart ? istDateToUtcISO(rankingStart.date) : null;
+
+    const attemptsStore = stores.attempts();
+    const { blobs } = await attemptsStore.list();
+    const attempts = (await Promise.all(blobs.map(({ key }) => attemptsStore.get(key, { type: 'json' })))).filter(Boolean);
+
+    // Look up current names by student id, so a rename by the admin shows up
+    // immediately rather than the name frozen at attempt time.
+    const studentsStore = stores.students();
+    const { blobs: studentBlobs } = await studentsStore.list();
+    const nameById = {};
+    await Promise.all(studentBlobs.map(async ({ key }) => {
+      const s = await studentsStore.get(key, { type: 'json' });
+      if (s) nameById[s.id] = s.name;
+    }));
+
+    const totals = {}; // student_id -> { name, total_score }
+    let latestUpdate = null;
+
+    for (const attempt of attempts) {
+      if (cutoffISO && attempt.created_at < cutoffISO) continue; // taken before the ranking cutoff - excluded
+
+      const category = attempt.category || 'General'; // older attempts, taken before tracks existed
+      if (!wantsOverall && category !== track) continue;
+
+      const currentName = nameById[attempt.student_id] || attempt.student_name;
+      if (!totals[attempt.student_id]) {
+        totals[attempt.student_id] = { student_id: attempt.student_id, name: currentName, total_score: 0 };
+      }
+      totals[attempt.student_id].total_score += attempt.score;
+
+      if (!latestUpdate || attempt.created_at > latestUpdate) latestUpdate = attempt.created_at;
+    }
+
+    const rows = Object.values(totals)
+      .map((r) => ({ ...r, total_score: Math.round(r.total_score * 100) / 100 }))
+      .sort((a, b) => b.total_score - a.total_score)
+      .map((r, i) => ({ ...r, rank: i + 1 }));
+
     const top10 = rows.slice(0, 10).map((r) => ({ rank: r.rank, name: r.name, total_score: r.total_score }));
 
     let myRank = null;
@@ -33,8 +68,9 @@ exports.handler = async (event) => {
       track,
       top10,
       my_rank: myRank,
-      updated_at: board ? board.updated_at : null,
+      updated_at: latestUpdate,
       total_students_ranked: rows.length,
+      ranking_since: rankingStart ? rankingStart.date : null,
     });
   } catch (err) {
     console.error(err);
