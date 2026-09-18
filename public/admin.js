@@ -94,11 +94,10 @@ function renderHome() {
 async function loadSets() {
   const body = document.getElementById('tabBody');
   try {
-    const [{ sets }, { students }, { tracks }, rankingStart] = await Promise.all([
+    const [{ sets }, { students }, { tracks }] = await Promise.all([
       api('list-sets'),
       api('admin-students'),
       api('list-tracks'),
-      api('admin-ranking-start'),
     ]);
     const groups = {};
     sets.forEach((s) => {
@@ -114,19 +113,7 @@ async function loadSets() {
           <div><span>${students.length}</span><div class="lbl">Students</div></div>
           <div><span>${tracks.length}</span><div class="lbl">Courses</div></div>
         </div>
-        <p class="lede" style="margin-top:14px; margin-bottom:0;">Leaderboard rankings update instantly as students submit quizzes — no refresh needed.</p>
-      </div>
-      <div class="card">
-        <h3>Ranking start date</h3>
-        <p class="lede">Only quizzes taken on or after this date count toward the leaderboard and rank. Use this to exclude old scores — for example, from before students were restricted to their own course.</p>
-        <p class="lede"><b>${rankingStart.date ? `Currently counting from ${rankingStart.date} onward.` : 'Currently counting every quiz ever taken (no cutoff set).'}</b></p>
-        <label>Set a new start date</label>
-        <input id="rankingStartInput" type="date" value="${rankingStart.date || ''}" />
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <button class="btn-gold" style="flex:1;" id="setRankingStartBtn">Save date</button>
-          ${rankingStart.date ? `<button class="btn-outline" style="flex:1;" id="clearRankingStartBtn">Clear (count everything)</button>` : ''}
-        </div>
-        <div id="rankingStartMsg"></div>
+        <p class="lede" style="margin-top:14px; margin-bottom:0;">Leaderboard rankings update instantly as students submit quizzes — no refresh needed. A student's score only ever counts the tests currently listed under their own course, so if you move a test to a different course, everyone's totals adjust automatically — no date or manual fix needed.</p>
       </div>
       ${sets.length === 0 ? `<div class="card"><div class="empty-state">No sets yet. Create one from the "+ New Set" tab.</div></div>` : catNames.map((cat) => `
       <div class="card">
@@ -146,30 +133,6 @@ async function loadSets() {
       </div>
       `).join('')}
     `;
-    document.getElementById('setRankingStartBtn').onclick = async () => {
-      const date = document.getElementById('rankingStartInput').value;
-      const msg = document.getElementById('rankingStartMsg');
-      if (!date) { msg.innerHTML = `<div class="error-msg">Pick a date first</div>`; return; }
-      if (!confirm(`From now on, only quizzes taken on or after ${date} will count toward rankings. Continue?`)) return;
-      try {
-        await api('admin-ranking-start', { method: 'POST', body: { date } });
-        loadSets();
-      } catch (e) {
-        msg.innerHTML = `<div class="error-msg">${esc(e.error || 'Could not save date')}</div>`;
-      }
-    };
-    const clearBtn = document.getElementById('clearRankingStartBtn');
-    if (clearBtn) {
-      clearBtn.onclick = async () => {
-        if (!confirm('Go back to counting every quiz ever taken, with no start date?')) return;
-        try {
-          await api('admin-ranking-start', { method: 'POST', body: { date: null } });
-          loadSets();
-        } catch (e) {
-          document.getElementById('rankingStartMsg').innerHTML = `<div class="error-msg">${esc(e.error || 'Could not clear date')}</div>`;
-        }
-      };
-    }
     body.querySelectorAll('[data-view]').forEach((b) => { b.onclick = () => viewSet(b.dataset.view); });
     body.querySelectorAll('[data-del]').forEach((b) => {
       b.onclick = async () => {
@@ -612,15 +575,17 @@ async function viewStudentHistory(studentId, name) {
       api('list-tracks'),
     ]);
     const student = students.find((s) => s.id === studentId);
-    const total = Math.round(attempts.reduce((sum, a) => sum + a.score, 0) * 100) / 100;
+    const counted = attempts.filter((a) => a.counted);
+    const total = Math.round(counted.reduce((sum, a) => sum + a.score, 0) * 100) / 100;
     body.innerHTML = `
       <div class="card">
         <button class="link-btn" id="backBtn">&larr; Back to all students</button>
         <h2 style="margin-top:10px;">${esc(student?.name || name)} ${student?.blocked ? '<span class="pill blocked">Blocked</span>' : ''}</h2>
         <div class="stat-row">
           <div><span>${attempts.length}</span><div class="lbl">Quizzes taken</div></div>
-          <div><span>${total}</span><div class="lbl">Total score</div></div>
+          <div><span>${total}</span><div class="lbl">Total score (${esc(student?.track || 'no course')})</div></div>
         </div>
+        ${attempts.length !== counted.length ? `<p class="lede" style="margin-top:10px;">${attempts.length - counted.length} quiz(zes) below are outside this student's current course and don't count toward their total.</p>` : ''}
       </div>
       <div class="card">
         <h3>Account details</h3>
@@ -651,7 +616,9 @@ async function viewStudentHistory(studentId, name) {
           <div class="set-row">
             <div>
               <div class="set-name">${esc(a.set_name)}</div>
-              <div class="set-meta">${new Date(a.created_at).toLocaleDateString()} · ${a.correct_count} correct, ${a.wrong_count} wrong, ${a.unattempted} skipped</div>
+              <div class="set-meta">${new Date(a.created_at).toLocaleDateString()} · ${a.correct_count} correct, ${a.wrong_count} wrong, ${a.unattempted} skipped
+                ${a.counted ? '' : ' · <span style="color:#b45309;">not counted — different course</span>'}
+              </div>
             </div>
             <span class="pill done">${a.score}</span>
           </div>

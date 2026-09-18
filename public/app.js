@@ -593,7 +593,6 @@ function renderBoardCard(data) {
     <div class="card">
       <h2>Top scorers — ${esc(data.track)}</h2>
       <p class="lede">${data.updated_at ? 'Updated ' + new Date(data.updated_at).toLocaleString() : 'Rankings update instantly as quizzes are submitted'}</p>
-      ${data.ranking_since ? `<p class="lede" style="margin-top:-8px;">Counting quizzes taken since ${data.ranking_since}</p>` : ''}
       ${rows.length === 0 ? `<div class="empty-state">No rankings yet — be the first to take a quiz!</div>` : `
       <table class="leaderboard">
         <thead><tr><th>Rank</th><th>Name</th><th style="text-align:right">Score</th></tr></thead>
@@ -654,7 +653,7 @@ async function loadProfile() {
           <div><span>${data.attempts.length}</span><div class="lbl">Quizzes taken</div></div>
           <div><span>${data.total_score}</span><div class="lbl">Total score</div></div>
         </div>
-        ${data.ranking_since ? `<p class="lede" style="margin-top:10px;">Total score counts quizzes taken since ${data.ranking_since} — your full history is below.</p>` : ''}
+        <p class="lede" style="margin-top:10px;">Shows the tests currently listed under your course. If a test moves to a different course, it drops off here too.</p>
       </div>
       <div class="card">
         <h3>History</h3>

@@ -1,4 +1,4 @@
-const { stores, json, requireStudent, getStudentRecord, initBlobs, istDateToUtcISO } = require('./_utils');
+const { stores, json, requireStudent, getStudentRecord, initBlobs, liveCategoryForAttempts, attemptCountsForTrack } = require('./_utils');
 
 // Rankings used to be a once-a-day snapshot recomputed on a schedule. Now the
 // board is computed fresh on every request directly from attempts, so a
@@ -16,12 +16,15 @@ exports.handler = async (event) => {
     const requestedTrack = event.queryStringParameters && event.queryStringParameters.track;
     const track = wantsOverall ? 'All courses' : (requestedTrack || record?.track || 'General');
 
-    const rankingStart = await stores.settings().get('ranking_start_date', { type: 'json' });
-    const cutoffISO = rankingStart ? istDateToUtcISO(rankingStart.date) : null;
-
     const attemptsStore = stores.attempts();
     const { blobs } = await attemptsStore.list();
     const attempts = (await Promise.all(blobs.map(({ key }) => attemptsStore.get(key, { type: 'json' })))).filter(Boolean);
+    // A test's category can be moved by the admin after it was taken (e.g. it
+    // used to be uncategorized, or got reassigned to a different course) - so
+    // this always checks the test's CURRENT category, not whatever it was
+    // when each attempt was submitted, keeping everyone's totals limited to
+    // exactly the tests that currently exist in their own course.
+    const categoryOf = await liveCategoryForAttempts(attempts);
 
     // Look up current names by student id, so a rename by the admin shows up
     // immediately rather than the name frozen at attempt time.
@@ -37,10 +40,10 @@ exports.handler = async (event) => {
     let latestUpdate = null;
 
     for (const attempt of attempts) {
-      if (cutoffISO && attempt.created_at < cutoffISO) continue; // taken before the ranking cutoff - excluded
-
-      const category = attempt.category || 'General'; // older attempts, taken before tracks existed
-      if (!wantsOverall && category !== track) continue;
+      // Per-course board: only tests that currently belong to this course (or
+      // are "General") count - checked live, so moving a test between courses
+      // updates every affected student's total automatically.
+      if (!wantsOverall && !attemptCountsForTrack(categoryOf(attempt), track)) continue;
 
       const currentName = nameById[attempt.student_id] || attempt.student_name;
       if (!totals[attempt.student_id]) {
@@ -70,7 +73,6 @@ exports.handler = async (event) => {
       my_rank: myRank,
       updated_at: latestUpdate,
       total_students_ranked: rows.length,
-      ranking_since: rankingStart ? rankingStart.date : null,
     });
   } catch (err) {
     console.error(err);

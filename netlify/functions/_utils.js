@@ -18,7 +18,7 @@ const stores = {
   leaderboard: () => getStore('leaderboard'), // unused now that ranking is computed live - kept only so old data doesn't error if ever read
   attendanceCodes: () => getStore('attendance_codes'), // key = "YYYY-MM-DD" (IST), value = {code, set_at}
   attendance: () => getStore('attendance'), // key = `${date}__${studentId}`, value = {status, entered_name, student_id, student_name, date, marked_at}
-  settings: () => getStore('settings'), // key = "ranking_start_date", value = {date: "YYYY-MM-DD", set_at}
+  settings: () => getStore('settings'), // general-purpose key/value store for future admin-configurable settings
 };
 
 // This app is used by an Indian classroom, so "today" for attendance and
@@ -94,6 +94,34 @@ async function getStudentRecord(payload) {
   return stores.students().get(payload.phone, { type: 'json' });
 }
 
+// Fairness rule for scoring: a student's counted score/history only includes
+// quizzes whose test CURRENTLY belongs to their CURRENT course (or is marked
+// "General", open to everyone). This is checked live against the set's
+// present-day category, not whatever category existed when the attempt was
+// made - so if the admin moves a test to a different course (or a student's
+// own course changes), totals for everyone adjust automatically, with no
+// date to set and no need to let anyone retake a quiz they've already seen
+// the answers to.
+function attemptCountsForTrack(attemptCategory, track) {
+  if (!track) return false;
+  const cat = attemptCategory || 'General';
+  return cat === 'General' || cat === track;
+}
+
+// Looks up the live category for a batch of attempts in one pass, falling
+// back to the category recorded on the attempt itself only if its set has
+// since been deleted (so there's nothing live left to check against).
+async function liveCategoryForAttempts(attempts) {
+  const setsStore = stores.sets();
+  const uniqueSetIds = [...new Set(attempts.map((a) => a.set_id))];
+  const categoryBySetId = {};
+  await Promise.all(uniqueSetIds.map(async (setId) => {
+    const set = await setsStore.get(setId, { type: 'json' });
+    if (set) categoryBySetId[setId] = set.category || 'General';
+  }));
+  return (attempt) => categoryBySetId[attempt.set_id] || attempt.category || 'General';
+}
+
 module.exports = {
   stores,
   json,
@@ -106,4 +134,6 @@ module.exports = {
   getStudentRecord,
   todayIST,
   istDateToUtcISO,
+  attemptCountsForTrack,
+  liveCategoryForAttempts,
 };
